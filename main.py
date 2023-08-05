@@ -5,9 +5,10 @@ from selenium.webdriver.common.by import By
 import time
 import concurrent.futures
 
+TARGET = 30 #幾篇貼文
 
 #For post crawler
-postCountOriginal = 1 #to 3000
+postCountOriginal = 1
 pageOriginal = 1
 postList = []
 
@@ -50,11 +51,9 @@ def postCrawler(n):
 
         #設定完後開始爬內容
         for post in posts:
-            # print(f"__________________________{postCountOriginal}篇貼文__________________________")
             try: #有一些post沒有內文
                 text = post.find_element(by=By.TAG_NAME, value="span").text
                 postList.append(text)
-                # print(text)
             except:
                 pass
             postCountOriginal += 1
@@ -99,8 +98,8 @@ def likeCrawler(n): #蒐集前幾篇的like
 
 #Multithread to do the crawling - 1 for content for the post, 1 for likes for the post
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-    thread1 = executor.submit(postCrawler, 30)
-    thread2 = executor.submit(likeCrawler, 30)
+    thread1 = executor.submit(postCrawler, TARGET)
+    thread2 = executor.submit(likeCrawler, TARGET)
 
     # Wait for both functions to complete
     concurrent.futures.wait([thread1, thread2])

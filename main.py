@@ -4,8 +4,11 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 import time
 import concurrent.futures
+import pygsheets
+import copy
+import pandas as pd
 
-TARGET = 30 #幾篇貼文
+TARGET = 300 #3000
 
 #For post crawler
 postCountOriginal = 1
@@ -16,6 +19,16 @@ postList = []
 postCountLike = 1
 pageLike = 1
 likeList = []
+
+#For all post update
+postUpdateListCount = [["Post"]]
+postUpdateListText = [["內容"]]
+postUpdateListLike = [["點讚數"]]
+
+#For filter post update
+postFilterListCount = [["Post"]]
+postFilterListText = [["內容"]]
+postFilterListLike = [["點讚數"]]
 
 def connectedPage():
     CHROME_DRIVER = "C:/Users/yuhan/OneDrive/桌面/hundred_days_chrome_driver/chromedriver.exe"
@@ -51,12 +64,16 @@ def postCrawler(n):
 
         #設定完後開始爬內容
         for post in posts:
+            # print(f"__________________________{postCountOriginal}篇貼文__________________________")
             try: #有一些post沒有內文
                 text = post.find_element(by=By.TAG_NAME, value="span").text
                 postList.append(text)
+                # print(text)
             except:
+                postList.append("")
                 pass
             postCountOriginal += 1
+
             if postCountOriginal > n:  # 爬到目標文章數
                 return
 
@@ -95,6 +112,28 @@ def likeCrawler(n): #蒐集前幾篇的like
         pageLike += 1
         nextPage(driver)
 
+def postFilter(keyword, likes):
+    postCopy = copy.deepcopy(postList)
+    likeCopy = copy.deepcopy(likeList)
+    convertLikeCopy = []
+    for like in likeCopy:
+        try:
+            convertLikeCopy.append(int(like))
+        except:
+            likeSplit = like.split(',')
+            convertLikeCopy.append(1000 * int(likeSplit[0]) + int(likeSplit[1]))
+
+    likeDictionary = {
+        "內容": postCopy,
+        "點讚數": convertLikeCopy
+    }
+    df = pd.DataFrame(likeDictionary)
+
+    postFilterResult = df.loc[(df["點讚數"] >= likes) & df["內容"].str.contains(keyword)]["內容"].tolist()
+    postLikeResult = df.loc[(df["點讚數"] >= likes) & df["內容"].str.contains(keyword)]["點讚數"].tolist()
+
+    return postFilterResult, postLikeResult
+
 
 #Multithread to do the crawling - 1 for content for the post, 1 for likes for the post
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
@@ -103,3 +142,29 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 
     # Wait for both functions to complete
     concurrent.futures.wait([thread1, thread2])
+
+
+#Update to all first
+gc = pygsheets.authorize(service_file='keys.json')
+postUpdateListCount = postUpdateListCount + [[f"貼文{count}"] for count in range(1,TARGET+1)]
+postUpdateListText = postUpdateListText + [[text] for text in postList]
+postUpdateListLike = postUpdateListLike + [[like] for like in likeList]
+
+sht = gc.open_by_url('https://docs.google.com/spreadsheets/d/11Wz_ezGESLnQIygWN6aAyqog9UgUSk2JJwxbQDWpk0w/edit#gid=621577692')
+allSheet = sht.worksheet_by_title("all")
+allSheet.update_values('A1:', postUpdateListCount)
+allSheet.update_values('B1', postUpdateListText)
+allSheet.update_values('C1', postUpdateListLike)
+
+
+#過濾貼文，Update to filter first
+filterListText, filterListLike = postFilter("生魚片",100)
+postFilterListCount = postFilterListCount + [[f"貼文{count}"] for count in range(1,len(filterListText)+1)]
+postFilterListText = postFilterListText + [[text] for text in filterListText]
+postFilterListLike = postFilterListLike + [[like] for like in filterListLike]
+
+sht = gc.open_by_url('https://docs.google.com/spreadsheets/d/11Wz_ezGESLnQIygWN6aAyqog9UgUSk2JJwxbQDWpk0w/edit#gid=621577692')
+filterSheet = sht.worksheet_by_title("filter")
+filterSheet.update_values('A1:', postFilterListCount)
+filterSheet.update_values('B1', postFilterListText)
+filterSheet.update_values('C1', postFilterListLike)
